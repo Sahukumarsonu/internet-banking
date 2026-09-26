@@ -9,9 +9,6 @@ real bank, card network, or payment system.
 - **Database:** SQLite with prepared statements, money stored as integer paise
 - **Deployment:** Frontend on GitHub Pages, backend on Render via Docker
 
-> ⚠️ **Disclaimer:** This is a student project for demonstration purposes. It
-> is not production-grade banking software and must never be connected to
-> real financial systems, real customer data, or real money.
 
 ---
 

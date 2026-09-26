@@ -1,5 +1,5 @@
 
-name: Deploy frontend to GitHub Pages
+name: Deploy Internet Banking Frontend
 
 on:
   push:
@@ -24,17 +24,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
       - name: Upload frontend
-        uses: actions/upload-pages-artifact@v4
+        uses: actions/upload-pages-artifact@v3
         with:
           path: internet-banking-system/frontend
 
-      - name: Deploy
+      - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

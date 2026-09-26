@@ -14,7 +14,7 @@ const API_BASE_URL = (function () {
   if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
     return "http://localhost:8080";
   }
-  return "https://YOUR-RENDER-SERVICE.onrender.com"; // <-- EDIT AFTER DEPLOYING BACKEND
+  return "https://internet-banking-jrd4.onrender.com"; // <-- EDIT AFTER DEPLOYING BACKEND
 })();
 
 const TOKEN_KEY = "ibs_token";

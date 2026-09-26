@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Transaction History — Internet Banking System</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">IB</span> Internet Banking</div>
+      <nav class="sidebar-nav">
+        <a href="dashboard.html" data-page="dashboard">🏠 Dashboard</a>
+        <a href="transfer.html" data-page="transfer">💸 Deposit / Withdraw / Transfer</a>
+        <a href="transactions.html" data-page="transactions">📜 Transaction History</a>
+        <a href="profile.html" data-page="profile">👤 Profile</a>
+      </nav>
+      <div class="sidebar-footer">
+        <span id="sidebar-user-name" style="display:block;font-size:0.85rem;margin-bottom:8px;color:#cddcec;"></span>
+        <button class="btn btn-secondary btn-block" data-action="logout">Log Out</button>
+      </div>
+    </aside>
+
+    <div class="main-content">
+      <div class="topbar">
+        <div class="brand"><span class="brand-mark">IB</span> Internet Banking</div>
+        <button class="hamburger" id="hamburger">☰</button>
+      </div>
+
+      <div class="page-body">
+        <div class="page-header"><h1>Transaction History</h1></div>
+
+        <div class="card">
+          <form id="filter-form" class="filter-bar">
+            <div class="form-group">
+              <label for="filter-search">Search description / account</label>
+              <input type="text" id="filter-search" placeholder="e.g. rent, IBS1000...">
+            </div>
+            <div class="form-group">
+              <label for="filter-type">Type</label>
+              <select id="filter-type">
+                <option value="">All</option>
+                <option value="deposit">Deposit</option>
+                <option value="withdrawal">Withdrawal</option>
+                <option value="transfer_out">Transfer Sent</option>
+                <option value="transfer_in">Transfer Received</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="filter-from">From date</label>
+              <input type="date" id="filter-from">
+            </div>
+            <div class="form-group">
+              <label for="filter-to">To date</label>
+              <input type="date" id="filter-to">
+            </div>
+            <button type="submit" class="btn btn-primary">Apply</button>
+            <button type="button" id="filter-reset" class="btn btn-secondary">Reset</button>
+          </form>
+
+          <div id="tx-table-wrap" class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>ID</th><th>Type</th><th>Details</th><th>Amount</th><th>Status</th><th>Date</th></tr>
+              </thead>
+              <tbody id="tx-body"></tbody>
+            </table>
+          </div>
+          <div id="tx-empty" class="empty-state" style="display:none;">
+            <div class="icon">🔍</div>
+            <p>No transactions match your filters.</p>
+          </div>
+
+          <div class="pagination">
+            <button class="btn btn-sm btn-secondary" id="prev-page">← Prev</button>
+            <span id="page-info">Page 1</span>
+            <button class="btn btn-sm btn-secondary" id="next-page">Next →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script src="js/transactions.js"></script>
+  <script>document.addEventListener("DOMContentLoaded", initTransactionsPage);</script>
+</body>
+</html>

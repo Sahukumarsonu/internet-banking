@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libboost-dev \
     libssl-dev \
     libsqlite3-dev \
+    libasio-dev \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 

@@ -44,7 +44,12 @@ async function initAdminDashboardPage() {
   if (!requireAdminAuth()) return;
   initAppShell("admin", "admin.html");
 
-  await Promise.all([loadAdminStats(), loadCustomers(), loadAdminTransactions()]);
+  // Sequential, not Promise.all — see the note in dashboard.js's
+  // initDashboardPage for why: Render's free-tier edge has shown a pattern
+  // of failing specifically under simultaneous authenticated requests.
+  await loadAdminStats();
+  await loadCustomers();
+  await loadAdminTransactions();
 
   document.getElementById("admin-search-form").addEventListener("submit", (e) => {
     e.preventDefault();

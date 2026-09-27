@@ -46,7 +46,7 @@ function initLoginPage() {
     submitBtn.innerHTML = '<span class="spinner"></span> Logging in...';
 
     try {
-      const data = await Api.post("/api/auth/login", { email, password }, { auth: false });
+      const data = await Api.post("/api/auth/login", { email, password }, { auth: false, skipPreflight: true });
       Api.setSession(data.token, data.user);
       window.location.href = "dashboard.html";
     } catch (err) {
@@ -98,7 +98,7 @@ function initRegisterPage() {
     submitBtn.innerHTML = '<span class="spinner"></span> Creating account...';
 
     try {
-      await Api.post("/api/auth/register", values, { auth: false });
+      await Api.post("/api/auth/register", values, { auth: false, skipPreflight: true });
       window.location.href = "login.html?registered=1";
     } catch (err) {
       alertBox.textContent = err.message;

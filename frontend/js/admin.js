@@ -27,7 +27,7 @@ function initAdminLoginPage() {
     submitBtn.disabled = true;
     submitBtn.innerHTML = '<span class="spinner"></span> Logging in...';
     try {
-      const data = await Api.post("/api/admin/login", { email, password }, { auth: false });
+      const data = await Api.post("/api/admin/login", { email, password }, { auth: false, skipPreflight: true });
       Api.setSession(data.token, data.user);
       window.location.href = "admin-dashboard.html";
     } catch (err) {

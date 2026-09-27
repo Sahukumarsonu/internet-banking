@@ -121,8 +121,13 @@ int main() {
     // the actual CORS headers onto this response just like any other.
     CROW_ROUTE(app, "/api/<path>").methods("OPTIONS"_method)
     ([](const crow::request&, std::string) {
-        crow::response res;
-        res.code = 204;
+        // Deliberately 200, not 204: a 204 (No Content) response has strict
+        // HTTP framing rules that Render's edge proxy (Cloudflare) was
+        // rejecting as malformed, replacing it with its own 502 page before
+        // it ever reached the browser — even though Crow itself logged a
+        // clean 204. 200 with an explicit empty body sidesteps that.
+        crow::response res(200);
+        res.write("");
         return res;
     });
 

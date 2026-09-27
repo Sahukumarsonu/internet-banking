@@ -14,7 +14,7 @@ const API_BASE_URL = (function () {
   if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
     return "http://localhost:8080";
   }
-  return "https://internet-banking-ek6f.onrender.com"; // <-- your actual Render backend
+  return "https://YOUR-RENDER-SERVICE.onrender.com"; // <-- EDIT AFTER DEPLOYING BACKEND
 })();
 
 const TOKEN_KEY = "ibs_token";
@@ -46,8 +46,19 @@ const Api = {
    * Core request helper. Throws an Error with a human-readable message
    * on failure (network error, non-2xx status, etc.) so callers can just
    * try/catch and show err.message to the user.
+   *
+   * skipPreflight: when true, sends the JSON body with a "simple" request
+   * Content-Type (text/plain) instead of application/json. A non-simple
+   * Content-Type is what forces the browser to send a CORS preflight
+   * (OPTIONS) request first — and Render's free-tier edge has been
+   * unreliable specifically on those preflight requests. The backend
+   * parses the raw body as JSON regardless of what Content-Type header
+   * says, so this only changes what the browser does, not what the
+   * server does. Only use this for endpoints that don't need the
+   * Authorization header — that header alone still forces a preflight
+   * no matter what Content-Type is used.
    */
-  async request(path, { method = "GET", body, auth = true, query } = {}) {
+  async request(path, { method = "GET", body, auth = true, query, skipPreflight = false } = {}) {
     let url = this.baseUrl + path;
     if (query) {
       const qs = new URLSearchParams(
@@ -56,7 +67,7 @@ const Api = {
       if (qs) url += "?" + qs;
     }
 
-    const headers = { "Content-Type": "application/json" };
+    const headers = { "Content-Type": skipPreflight ? "text/plain" : "application/json" };
     if (auth) {
       const token = this.getToken();
       if (token) headers["Authorization"] = "Bearer " + token;

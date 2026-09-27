@@ -88,14 +88,35 @@ int main() {
     crow::App<crow::CORSHandler> app;
 
     // --- CORS ------------------------------------------------------------
+    std::string allowedOrigin = config::allowedOrigins();
     auto& cors = app.get_middleware<crow::CORSHandler>();
-    {
-        std::string origins = config::allowedOrigins();
-        cors.global()
-            .headers("Content-Type", "Authorization")
-            .methods("GET"_method, "POST"_method, "PUT"_method, "DELETE"_method, "OPTIONS"_method)
-            .origin(origins);
-    }
+    cors.global()
+        .headers("Content-Type", "Authorization")
+        .methods("GET"_method, "POST"_method, "PUT"_method, "DELETE"_method, "OPTIONS"_method)
+        .origin(allowedOrigin);
+
+    // Belt-and-suspenders preflight handling. Every route below is
+    // registered for a specific method (POST, GET, ...) only, so a browser's
+    // OPTIONS preflight request has no matching route and can be rejected by
+    // Crow's router before the CORS middleware ever runs — the browser then
+    // sees a response with no Access-Control-Allow-Origin header at all and
+    // blocks the real request, even though the middleware above is
+    // configured correctly. This catch-all guarantees every OPTIONS request
+    // under /api/ gets a real, matched route that always answers with the
+    // right CORS headers, regardless of middleware/router ordering.
+    CROW_ROUTE(app, "/api/<path>").methods("OPTIONS"_method)
+    ([allowedOrigin](const crow::request&, std::string) {
+        crow::response res;
+        res.code = 204;
+        res.set_header("Access-Control-Allow-Origin", allowedOrigin);
+        res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+        res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+        res.set_header("Access-Control-Max-Age", "86400");
+        if (allowedOrigin != "*") {
+            res.set_header("Vary", "Origin");
+        }
+        return res;
+    });
 
     // ======================================================================
     // AUTH ROUTES

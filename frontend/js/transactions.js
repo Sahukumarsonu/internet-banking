@@ -38,12 +38,13 @@ async function loadTransactions() {
   const from = document.getElementById("filter-from").value;
   const to = document.getElementById("filter-to").value;
 
-  tbody.innerHTML = `<tr><td colspan="5" class="loading-row"><span class="spinner spinner-dark"></span> Loading...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="6" class="loading-row"><span class="spinner spinner-dark"></span> Loading...</td></tr>`;
   emptyState.style.display = "none";
   tableWrap.style.display = "block";
 
   try {
-    const data = await Api.get("/api/transactions", {
+    // Read-only GET, safe to auto-retry.
+    const data = await Api.getWithRetry("/api/transactions", {
       query: { type, from, to, page: currentPage, pageSize },
     });
 

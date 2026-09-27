@@ -28,9 +28,12 @@ inline int port() {
 
 // Comma-separated list of allowed CORS origins for production,
 // e.g. "https://yourusername.github.io"
-// Use "*" only for local development.
+// Defaults to this project's actual deployed frontend origin, so the app
+// works correctly out of the box even if ALLOWED_ORIGINS is never set on
+// Render — no separate manual configuration step required. Override with
+// the ALLOWED_ORIGINS env var only if you deploy the frontend elsewhere.
 inline std::string allowedOrigins() {
-    return getEnvOrDefault("ALLOWED_ORIGINS", "*");
+    return getEnvOrDefault("ALLOWED_ORIGINS", "https://sahukumarsonu.github.io");
 }
 
 // Secret used only to make session tokens harder to guess (defense in depth).

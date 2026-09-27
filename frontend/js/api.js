@@ -1,20 +1,20 @@
 /**
  * api.js — single configurable place for the backend API base URL,
- * plus a small fetch wrapper with auth, JSON handling, and error messages.
+ * plus a small fetch wrapper with auth, JSON handling, retry, and error
+ * messages.
  *
- * DEVELOPMENT: leave API_BASE_URL as "http://localhost:8080"
- * PRODUCTION:  change API_BASE_URL to your deployed Render URL, e.g.
- *              "https://internet-banking-backend.onrender.com"
- * This is the ONLY line you need to edit when deploying the frontend.
+ * PRODUCTION_API_URL is hardcoded to this project's actual deployed
+ * backend. When running locally (localhost/127.0.0.1), it automatically
+ * falls back to a local backend on port 8080 instead — no manual editing
+ * needed either way.
  */
+const PRODUCTION_API_URL = "https://internet-banking-ek6f.onrender.com";
+
 const API_BASE_URL = (function () {
-  // If this file is served from GitHub Pages, default to the placeholder
-  // Render URL below (edit after you deploy the backend). If served from
-  // localhost, default to a local backend on port 8080.
   if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
     return "http://localhost:8080";
   }
-  return "https://internet-banking-ek6f.onrender.com"; // <-- your actual Render backend
+  return PRODUCTION_API_URL;
 })();
 
 const TOKEN_KEY = "ibs_token";
@@ -48,15 +48,14 @@ const Api = {
    * try/catch and show err.message to the user.
    *
    * skipPreflight: when true, sends the JSON body with a "simple" request
-   * Content-Type (text/plain) instead of application/json. A non-simple
-   * Content-Type is what forces the browser to send a CORS preflight
-   * (OPTIONS) request first — and Render's free-tier edge has been
-   * unreliable specifically on those preflight requests. The backend
-   * parses the raw body as JSON regardless of what Content-Type header
-   * says, so this only changes what the browser does, not what the
-   * server does. Only use this for endpoints that don't need the
-   * Authorization header — that header alone still forces a preflight
-   * no matter what Content-Type is used.
+   * Content-Type (text/plain) instead of application/json, which makes
+   * the browser skip its CORS preflight (OPTIONS) request entirely for
+   * this call. The backend parses the raw body as JSON regardless of what
+   * Content-Type header says, so this only changes what the browser does,
+   * not what the server does. Only safe for endpoints that don't need the
+   * Authorization header — that header alone always forces a preflight no
+   * matter what Content-Type is used, so it's used for login/register/
+   * admin-login only.
    */
   async request(path, { method = "GET", body, auth = true, query, skipPreflight = false } = {}) {
     let url = this.baseUrl + path;
@@ -81,10 +80,20 @@ const Api = {
         body: body !== undefined ? JSON.stringify(body) : undefined,
       });
     } catch (networkErr) {
-      throw new Error(
-        "Could not reach the banking server. Check your connection, or the API_BASE_URL " +
-        "configured in js/api.js (" + this.baseUrl + ")."
+      // Tagged so callers (see requestWithRetry below) can tell "never
+      // reached the server, or the response got lost in transit" apart
+      // from a real HTTP error response the server chose to send (like a
+      // 409). This matters because free-tier hosting occasionally drops a
+      // response after the server has already processed the request — so
+      // a network-level failure here does NOT mean the request didn't
+      // happen.
+      const err = new Error(
+        "Could not reach the banking server. It may be waking up from idle (free-tier hosting " +
+        "sleeps after inactivity) — this can take up to a minute on the first request. " +
+        "Please try again in a moment."
       );
+      err.isNetworkFailure = true;
+      throw err;
     }
 
     let data = null;
@@ -107,7 +116,9 @@ const Api = {
 
     if (!response.ok) {
       const message = (data && data.error) ? data.error : `Request failed (HTTP ${response.status})`;
-      throw new Error(message);
+      const err = new Error(message);
+      err.status = response.status;
+      throw err;
     }
 
     return data;
@@ -116,6 +127,40 @@ const Api = {
   get(path, opts) { return this.request(path, { ...opts, method: "GET" }); },
   post(path, body, opts) { return this.request(path, { ...opts, method: "POST", body }); },
   put(path, body, opts) { return this.request(path, { ...opts, method: "PUT", body }); },
+
+  /**
+   * Same as request(), but if the first attempt fails with a network-level
+   * failure (isNetworkFailure), waits briefly and tries exactly once more
+   * before giving up. Free-tier hosting (both the frontend and backend
+   * here) can occasionally drop a request or response in transit even
+   * when the server processed it correctly — a same-request retry either
+   * gets the real answer this time, or comes back with a clear, specific
+   * error (like "already exists") that's more honest to the user than a
+   * generic connection error when the action may have actually succeeded.
+   * Only retries once, and only for network failures — a real HTTP error
+   * response (400, 401, 409, ...) is never retried or hidden.
+   */
+  async requestWithRetry(path, opts) {
+    try {
+      return await this.request(path, opts);
+    } catch (err) {
+      if (!err.isNetworkFailure) throw err;
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      try {
+        return await this.request(path, opts);
+      } catch (retryErr) {
+        // Tag so the caller knows this came from the retry, not the first
+        // attempt — useful for telling the user "this might be your own
+        // request from a moment ago" rather than a plain error.
+        retryErr.afterNetworkFailureRetry = true;
+        throw retryErr;
+      }
+    }
+  },
+
+  getWithRetry(path, opts) { return this.requestWithRetry(path, { ...opts, method: "GET" }); },
+  postWithRetry(path, body, opts) { return this.requestWithRetry(path, { ...opts, method: "POST", body }); },
+  putWithRetry(path, body, opts) { return this.requestWithRetry(path, { ...opts, method: "PUT", body }); },
 };
 
 /** Requires a logged-in customer; redirects to login otherwise. Call at the top of protected pages. */

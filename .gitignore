@@ -1,0 +1,25 @@
+# Build artifacts
+backend/build/
+backend/cmake-build-*/
+*.o
+*.obj
+
+# SQLite database files (never commit real data)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+database/bank.db
+
+# Environment / secrets
+.env
+*.env.local
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Node (if any tooling is added later)
+node_modules/

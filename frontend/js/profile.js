@@ -13,7 +13,8 @@ function initProfilePage() {
 
 async function loadProfile() {
   try {
-    const profile = await Api.get("/api/profile");
+    // Read-only GET, safe to auto-retry.
+    const profile = await Api.getWithRetry("/api/profile");
     document.getElementById("profile-fullName").value = profile.fullName;
     document.getElementById("profile-email").value = profile.email;
     document.getElementById("profile-phone").value = profile.phone;
@@ -39,6 +40,9 @@ async function onProfileSubmit(e) {
   const btn = document.getElementById("profile-submit");
   btn.disabled = true;
   try {
+    // Not auto-retried: an update is not idempotent-safe to blindly resend
+    // (though low-risk here, this keeps the same conservative rule used
+    // for every state-changing write in this app).
     await Api.put("/api/profile", { fullName, phone });
     showToast("Profile updated successfully", "success");
     const user = Api.getCurrentUser();
@@ -69,11 +73,21 @@ async function onPasswordSubmit(e) {
   const btn = document.getElementById("password-submit");
   btn.disabled = true;
   try {
+    // Deliberately not auto-retried: changing a password is a sensitive,
+    // non-idempotent write — never blindly resend it.
     await Api.put("/api/profile/password", { currentPassword, newPassword });
     showToast("Password changed successfully", "success");
     document.getElementById("password-form").reset();
   } catch (err) {
-    showToast(err.message, "error");
+    if (err.isNetworkFailure) {
+      showToast(
+        "Connection interrupted — your password may or may not have changed. " +
+        "Try logging in with your new password; if that fails, use your old one and try again.",
+        "error"
+      );
+    } else {
+      showToast(err.message, "error");
+    }
   } finally {
     btn.disabled = false;
   }

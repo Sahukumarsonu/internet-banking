@@ -19,18 +19,16 @@ async function initDashboardPage() {
 
   try {
     const [account, txData] = await Promise.all([
-      Api.get("/api/account"),
-      Api.get("/api/transactions", { query: { page: 1, pageSize: 5 } }),
+      Api.getWithRetry("/api/account"),
+      Api.getWithRetry("/api/transactions", { query: { page: 1, pageSize: 5 } }),
     ]);
 
     balanceEl.textContent = formatCurrency(account.balance);
     accountEl.textContent = account.accountNumber;
 
-    // Deposits/withdrawals totals: fetch full history counts via a couple of
-    // lightweight calls (kept simple for a college-scale dataset).
     const [deposits, withdrawals] = await Promise.all([
-      Api.get("/api/transactions", { query: { type: "deposit", pageSize: 1 } }),
-      Api.get("/api/transactions", { query: { type: "withdrawal", pageSize: 1 } }),
+      Api.getWithRetry("/api/transactions", { query: { type: "deposit", pageSize: 1 } }),
+      Api.getWithRetry("/api/transactions", { query: { type: "withdrawal", pageSize: 1 } }),
     ]);
     depositsEl.textContent = deposits.total;
     withdrawalsEl.textContent = withdrawals.total;

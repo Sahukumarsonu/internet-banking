@@ -27,7 +27,7 @@ function initAdminLoginPage() {
     submitBtn.disabled = true;
     submitBtn.innerHTML = '<span class="spinner"></span> Logging in...';
     try {
-      const data = await Api.post("/api/admin/login", { email, password }, { auth: false, skipPreflight: true });
+      const data = await Api.postWithRetry("/api/admin/login", { email, password }, { auth: false, skipPreflight: true });
       Api.setSession(data.token, data.user);
       window.location.href = "admin-dashboard.html";
     } catch (err) {
@@ -54,7 +54,7 @@ async function initAdminDashboardPage() {
 
 async function loadAdminStats() {
   try {
-    const stats = await Api.get("/api/admin/dashboard");
+    const stats = await Api.getWithRetry("/api/admin/dashboard");
     document.getElementById("stat-total-customers").textContent = stats.totalCustomers;
     document.getElementById("stat-total-accounts").textContent = stats.totalAccounts;
     document.getElementById("stat-total-transactions").textContent = stats.totalTransactions;
@@ -69,7 +69,7 @@ async function loadCustomers() {
   const search = document.getElementById("admin-search").value.trim();
   tbody.innerHTML = `<tr><td colspan="6" class="loading-row"><span class="spinner spinner-dark"></span> Loading...</td></tr>`;
   try {
-    const data = await Api.get("/api/admin/customers", { query: { search } });
+    const data = await Api.getWithRetry("/api/admin/customers", { query: { search } });
     tbody.innerHTML = "";
     if (!data.customers || data.customers.length === 0) {
       tbody.innerHTML = `<tr><td colspan="6" class="loading-row">No customers found.</td></tr>`;
@@ -106,12 +106,19 @@ async function toggleCustomerStatus(btn) {
   const currentlyActive = btn.dataset.active === "true";
   btn.disabled = true;
   try {
+    // Deliberately not auto-retried: a status write shouldn't be blindly
+    // resent if the response is merely lost — re-check by reloading instead.
     await Api.put(`/api/admin/customers/${id}/status`, { isActive: !currentlyActive });
     showToast(`Customer ${!currentlyActive ? "activated" : "deactivated"}`, "success");
     loadCustomers();
     loadAdminStats();
   } catch (err) {
-    showToast(err.message, "error");
+    if (err.isNetworkFailure) {
+      showToast("Connection interrupted — reloading to check the current status.", "error");
+      loadCustomers();
+    } else {
+      showToast(err.message, "error");
+    }
     btn.disabled = false;
   }
 }
@@ -120,7 +127,7 @@ async function loadAdminTransactions() {
   const tbody = document.getElementById("admin-tx-body");
   tbody.innerHTML = `<tr><td colspan="6" class="loading-row"><span class="spinner spinner-dark"></span> Loading...</td></tr>`;
   try {
-    const data = await Api.get("/api/admin/transactions", { query: { limit: 50 } });
+    const data = await Api.getWithRetry("/api/admin/transactions", { query: { limit: 50 } });
     tbody.innerHTML = "";
     if (!data.transactions || data.transactions.length === 0) {
       tbody.innerHTML = `<tr><td colspan="6" class="loading-row">No transactions yet.</td></tr>`;

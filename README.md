@@ -1,124 +1,120 @@
 # Internet Banking System (C++ Full-Stack)
 
-An educational, full-stack internet banking **simulation** built for an NTCC
-college project. It uses fictional data only and does not connect to any
-real bank, card network, or payment system.
+An educational, full-stack internet banking **simulation** for an NTCC
+college project, using fictional data only.
 
-- **Frontend:** HTML5, CSS3, vanilla JavaScript (responsive, no framework)
-- **Backend:** C++17, [Crow](https://crowcpp.org/) REST framework, CMake
-- **Database:** SQLite with prepared statements, money stored as integer paise
-- **Deployment:** Frontend on GitHub Pages, backend on Render via Docker
+- **Frontend:** `https://sahukumarsonu.github.io/internet-banking/`
+- **Backend:** `https://internet-banking-ek6f.onrender.com`
 
+Both URLs are hardcoded into this project (see `frontend/js/api.js` and
+`backend/config.h`) — deploying it as-is, to the same GitHub Pages repo
+and the same Render service, should work with no manual configuration.
+
+> ⚠️ Disclaimer: this is a student project for demonstration purposes. It
+> is not production-grade banking software and must never be connected to
+> real financial systems, real customer data, or real money.
 
 ---
 
-## 1. Project Structure
+## What's hardcoded, and why
+
+This rewrite followed a long debugging session that surfaced several real,
+separate issues in a row. Each fix below is now baked into the code from
+the start, not something you need to configure:
+
+1. **`frontend/js/api.js`** — `PRODUCTION_API_URL` is set directly to
+   `https://internet-banking-ek6f.onrender.com`. (Still auto-detects
+   `localhost` for local dev and uses `http://localhost:8080` there.)
+2. **`backend/config.h`** — `ALLOWED_ORIGINS` defaults to
+   `https://sahukumarsonu.github.io` if the env var isn't set on Render,
+   instead of a permissive `*` or an unset value. You can still override it
+   via Render's Environment tab if you ever move the frontend.
+3. **`backend/main.cpp`** — uses a small hand-written CORS middleware
+   (`SimpleCors`) instead of Crow's built-in `CORSHandler`, plus an
+   explicit catch-all `OPTIONS` route under `/api/<path>`. In testing,
+   Crow's built-in CORS middleware silently failed to answer preflight
+   requests that had no other matching route, and a plain `204 No Content`
+   preflight reply was intermittently rejected by Render's edge (Cloudflare)
+   as malformed — this version replies `200` with an explicit empty body,
+   which is more universally tolerated.
+4. **`frontend/js/api.js` + `auth.js` + `admin.js`** — the login, register,
+   and admin-login calls send `Content-Type: text/plain` instead of
+   `application/json` (via a `skipPreflight` flag). Since those calls don't
+   need an `Authorization` header, this makes them "simple" CORS requests
+   that skip the preflight `OPTIONS` round-trip entirely, sidestepping the
+   Render edge flakiness described above for the most important calls.
+5. **Automatic retry on network failure** — `Api.getWithRetry` /
+   `postWithRetry` / `putWithRetry` retry exactly once, after a 1.5s delay,
+   *only* when the browser's `fetch()` fails at the network level (not on
+   a real HTTP error response). This covers cases where free-tier hosting
+   drops a request or response in transit even though the server actually
+   processed it. **Only used for safe, idempotent calls** — every read
+   (GET) and login/register. Money-moving writes (`deposit`, `withdraw`,
+   `transfer`) and the password-change endpoint deliberately do **not**
+   auto-retry, since silently resubmitting one of those after an unclear
+   network failure could duplicate a real transaction. Those show a
+   message asking you to check your balance/history before resubmitting.
+
+None of this eliminates Render's free-tier cold-start/edge behavior — that's
+inherent to the hosting tier, not a code bug — but it makes the app behave
+sensibly around it instead of leaving you guessing.
+
+---
+
+## Project Structure
 
 ```
 internet-banking-system/
-├── frontend/                 # Static site — deployed to GitHub Pages
-│   ├── index.html            # Landing page
-│   ├── login.html            # Customer login
-│   ├── register.html         # Customer registration
-│   ├── dashboard.html        # Customer dashboard
-│   ├── transfer.html         # Deposit / withdraw / transfer
-│   ├── transactions.html     # Transaction history (search/filter/paginate)
-│   ├── profile.html          # Profile + change password
-│   ├── admin.html            # Admin login
-│   ├── admin-dashboard.html  # Admin panel
+├── frontend/                 # Static site — GitHub Pages
+│   ├── index.html, login.html, register.html, dashboard.html,
+│   │   transfer.html, transactions.html, profile.html,
+│   │   admin.html, admin-dashboard.html
 │   ├── css/style.css
-│   ├── js/
-│   │   ├── api.js            # <-- API_BASE_URL configured here
-│   │   ├── auth.js
-│   │   ├── dashboard.js
-│   │   ├── transfer.js
-│   │   ├── transactions.js
-│   │   ├── profile.js
-│   │   └── admin.js
-│   └── assets/
+│   └── js/
+│       ├── api.js            # API_BASE_URL + fetch wrapper + retry logic
+│       ├── auth.js, dashboard.js, transfer.js,
+│       │   transactions.js, profile.js, admin.js
 │
-├── backend/                  # C++ REST API — deployed to Render
-│   ├── main.cpp               # Route registration
-│   ├── config.h                # Environment-variable configuration
-│   ├── database.h / .cpp       # SQLite wrapper (Statement, Database)
-│   ├── auth.h / .cpp            # Password hashing, sessions, rate limiting
-│   ├── account.h / .cpp         # Profile / account endpoints
-│   ├── transaction.h / .cpp     # Deposit / withdraw / transfer (atomic)
+├── backend/                  # C++ REST API — Render (Docker)
+│   ├── main.cpp               # Routes + SimpleCors middleware
+│   ├── config.h                 # Env-var configuration (hardcoded defaults)
+│   ├── database.h / .cpp         # SQLite wrapper
+│   ├── auth.h / .cpp              # Password hashing, sessions, rate limiting
+│   ├── account.h / .cpp            # Profile / account endpoints
+│   ├── transaction.h / .cpp         # Deposit / withdraw / transfer (atomic)
 │   ├── CMakeLists.txt
-│   └── Dockerfile
-│
+│   └── Dockerfile              # Includes libasio-dev — required for this
+│                                  Crow version to build cleanly on Render
 ├── database/
-│   ├── schema.sql             # Tables, constraints, indexes
+│   ├── schema.sql
 │   └── seed.sql                # Fictional demo data (see credentials below)
 │
 ├── .gitignore
-├── docker-compose.yml         # Local dev convenience only
+├── docker-compose.yml
 └── README.md
 ```
 
 ---
 
-## 2. Local Development
+## Local Development
 
-### Prerequisites
-- CMake ≥ 3.16, a C++17 compiler (g++/clang)
-- `libsqlite3-dev`, `libssl-dev` (OpenSSL), `libboost-dev` + `libboost-system-dev`
-- [Crow](https://github.com/CrowCpp/Crow) headers (header-only) — either install
-  system-wide or drop them under `backend/third_party/crow/include`
-- Python 3 (only for serving the frontend locally) or any static file server
-- Docker + Docker Compose (optional, for the containerized workflow)
-
-### Option A — Docker Compose (recommended, matches production)
 ```bash
 docker compose up --build
 # Backend:  http://localhost:8080
 # Frontend: http://localhost:8081
 ```
-The frontend's `js/api.js` auto-detects `localhost` and points at
-`http://localhost:8080`, so no manual edits are needed for local dev.
+`js/api.js` auto-detects `localhost` and points there — no edits needed.
 
-### Option B — Build natively
-```bash
-# 1. Install dependencies (Debian/Ubuntu example)
-sudo apt-get update && sudo apt-get install -y \
-  build-essential cmake libsqlite3-dev libssl-dev libboost-dev libboost-system-dev git
-
-# 2. Fetch Crow headers
-git clone --depth 1 --branch v1.2.0 https://github.com/CrowCpp/Crow.git /tmp/crow
-sudo cp -r /tmp/crow/include/* /usr/local/include/
-
-# 3. Build
-cd backend
-cmake -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j"$(nproc)"
-
-# 4. Run (schema.sql is applied automatically on first boot)
-export BANK_DB_PATH=./bank.db
-export PORT=8080
-export ALLOWED_ORIGINS=*
-./build/bank_server
-```
-
-### Serve the frontend locally
-```bash
-cd frontend
-python3 -m http.server 8081
-# open http://localhost:8081
-```
+To build natively instead, see the "Local Development" section pattern:
+install `build-essential cmake libsqlite3-dev libssl-dev libboost-dev
+libboost-system-dev libasio-dev`, clone Crow's headers into
+`/usr/local/include`, then `cmake -B build && cmake --build build` from
+`backend/`.
 
 ---
 
-## 3. Database Setup
+## Demo credentials (fictional data)
 
-The backend automatically applies `database/schema.sql` on startup
-(`CREATE TABLE IF NOT EXISTS`, so it's safe to run every boot). To load the
-fictional demo data:
-
-```bash
-sqlite3 backend/bank.db < database/seed.sql
-```
-
-### Demo credentials (fictional data, PASSWORD_PEPPER left at its default)
 | Role     | Email                         | Password       |
 |----------|-------------------------------|----------------|
 | Admin    | admin@ibs.com                 | Admin@12345    |
@@ -126,236 +122,99 @@ sqlite3 backend/bank.db < database/seed.sql
 | Customer | priya.sharma@example.com      | Password@123   |
 | Customer (deactivated) | amit.kumar@example.com | Password@123 |
 
-If you change `PASSWORD_PEPPER` from its default, these seeded password
-hashes will stop verifying — either keep the default pepper for demo use,
-or re-register these users through `/api/auth/register` after changing it.
-
-Money is stored as **integer paise** (`balance_paise`) to avoid
-floating-point rounding errors; the API converts to/from rupees at the edge.
-
 ---
 
-## 4. API Documentation
+## Deploying this exact project
 
-Base path: `/api`. All authenticated routes require
-`Authorization: Bearer <token>` (token returned by login).
+### Frontend (GitHub Pages)
+1. Push this repo to `sahukumarsonu/internet-banking` on `main`.
+2. Settings → Pages → serve the `frontend/` folder (or via a workflow to
+   `gh-pages`, whichever this repo is already using).
+3. No further edits needed — `api.js` already points at the right backend.
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| POST | `/auth/register` | — | Create a customer + account |
-| POST | `/auth/login` | — | Log in, returns session token |
-| POST | `/auth/logout` | Bearer | Invalidate current session |
-| GET  | `/auth/me` | Bearer | Current user info |
-| GET  | `/account` | Bearer | Account number, balance, created date |
-| GET  | `/account/balance` | Bearer | Balance only |
-| GET  | `/profile` | Bearer | Profile details |
-| PUT  | `/profile` | Bearer | Update full name / phone |
-| PUT  | `/profile/password` | Bearer | Change password |
-| POST | `/transactions/deposit` | Bearer | `{ amount, description? }` |
-| POST | `/transactions/withdraw` | Bearer | `{ amount, description? }` |
-| POST | `/transactions/transfer` | Bearer | `{ receiverAccountNumber, amount, description? }` |
-| GET  | `/transactions` | Bearer | Query: `type, from, to, page, pageSize` |
-| GET  | `/transactions/{id}` | Bearer | Single transaction (must belong to caller) |
-| POST | `/admin/login` | — | Admin login (checks `is_admin`) |
-| GET  | `/admin/dashboard` | Bearer (admin) | Aggregate stats |
-| GET  | `/admin/customers` | Bearer (admin) | Query: `search` |
-| GET  | `/admin/transactions` | Bearer (admin) | Query: `limit` |
-| PUT  | `/admin/customers/{id}/status` | Bearer (admin) | `{ isActive }` |
-| GET  | `/health` | — | Health check for uptime monitors |
-
-### Testing with curl
-```bash
-# Register
-curl -X POST http://localhost:8080/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"fullName":"Test User","email":"test@example.com","phone":"9876543210","password":"Password@123","confirmPassword":"Password@123"}'
-
-# Login
-curl -X POST http://localhost:8080/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"test@example.com","password":"Password@123"}'
-# -> save the "token" from the response
-
-# Deposit
-curl -X POST http://localhost:8080/api/transactions/deposit \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <TOKEN>" \
-  -d '{"amount": 500, "description": "Test deposit"}'
-
-# Transaction history
-curl http://localhost:8080/api/transactions \
-  -H "Authorization: Bearer <TOKEN>"
-```
-Or import the same requests into Postman using the table above.
-
----
-
-## 5. Security Notes
-
-- Passwords are hashed with **PBKDF2-HMAC-SHA256** (210,000 iterations) plus a
-  server-side pepper, via OpenSSL. *(The original brief suggested Argon2id or
-  bcrypt; PBKDF2 was used instead so the project builds cleanly on Render's
-  container without vendoring a native Argon2/bcrypt library. It's still a
-  reputable, industry-standard KDF for this purpose. To switch, only
-  `auth.cpp`'s `hashPassword`/`verifyPassword` need to change.)*
-- All SQL uses prepared statements (no string-concatenated queries).
-- The backend recalculates and re-checks balances itself — the frontend
-  never sends a balance, and withdrawals/transfers are guarded by a
-  `WHERE balance_paise >= ?` clause so concurrent requests can't overdraw.
-- Transfers are wrapped in a single SQLite transaction (`BEGIN`/`COMMIT`);
-  any failure triggers a `ROLLBACK`, so both balances always move together
-  or neither does.
-- Login attempts are rate-limited per email (`MAX_LOGIN_ATTEMPTS` failures
-  within `LOGIN_LOCKOUT_WINDOW_MINUTES`).
-- Sessions are random 256-bit tokens stored server-side with an expiry
-  (`SESSION_LIFETIME_HOURS`), not JWTs — this keeps logout/revocation simple.
-- CORS is restricted via `ALLOWED_ORIGINS`; set it to your exact GitHub
-  Pages origin in production, not `*`.
-- No secrets are committed to source control — everything sensitive is an
-  environment variable (see `.gitignore` and `config.h`).
-
----
-
-## 6. Frontend Configuration
-
-All API calls go through `frontend/js/api.js`. **This is the only file you
-need to edit when deploying:**
-
-```js
-const API_BASE_URL = (function () {
-  if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
-    return "http://localhost:8080";
-  }
-  return "https://YOUR-RENDER-SERVICE.onrender.com"; // <-- change this after deploying the backend
-})();
-```
-
----
-
-## 7. GitHub Pages Deployment (Frontend)
-
-GitHub Pages **only serves static files — it cannot run the C++ backend.**
-You must deploy the backend separately (see Section 8) and point the
-frontend at it.
-
-1. Push this repository to GitHub.
-2. In your repo: **Settings → Pages → Source** → select the branch and set
-   the folder to `/frontend` (or use a GitHub Action to publish that folder
-   to the `gh-pages` branch — either works).
-3. Wait for the Pages build to finish; your site will be at
-   `https://<username>.github.io/<repo-name>/`.
-4. Edit `frontend/js/api.js` and set `API_BASE_URL` to your deployed Render
-   URL (Section 8), then commit and push — GitHub Pages redeploys
-   automatically.
-5. To update the site after future changes: just push to the branch/folder
-   Pages is configured to serve; no manual rebuild step is needed since it's
-   plain static HTML/CSS/JS.
-
-All internal links and asset references use **relative paths**
-(`css/style.css`, `js/api.js`, `login.html`, …), so the site works correctly
-whether it's served from a domain root or from a GitHub Pages subpath like
-`/internet-banking-system/`.
-
----
-
-## 8. Render Deployment (C++ Backend)
-
-1. Push this repository to GitHub (same repo as the frontend is fine).
-2. In Render: **New → Web Service** → connect your GitHub repo.
-3. **Environment:** Docker. **Dockerfile path:** `backend/Dockerfile`.
-   **Docker build context:** repository root (so the Dockerfile can `COPY`
-   both `backend/` and `database/`).
-4. **Environment variables** (Render dashboard → Environment):
-   | Key | Example value |
+### Backend (Render)
+1. New Web Service → Docker → Dockerfile path `backend/Dockerfile`,
+   build context = repo root.
+2. Environment variables (optional — sensible defaults are built in):
+   | Key | Default if unset |
    |---|---|
-   | `ALLOWED_ORIGINS` | `https://<username>.github.io` |
-   | `PASSWORD_PEPPER` | a long random string you generate |
-   | `SESSION_LIFETIME_HOURS` | `12` |
-   | `BANK_DB_PATH` | `/data/bank.db` |
-
-   Render automatically injects `PORT`; `config.h` reads it and the server
-   binds to `0.0.0.0:$PORT` as required.
-5. **Persistent storage:** SQLite writes to a file, and Render's filesystem
-   is **ephemeral** — it resets on every deploy/restart. To keep data:
-   - Go to your service → **Disks** → add a disk, e.g. mounted at `/data`.
-   - Keep `BANK_DB_PATH=/data/bank.db` so the database lives on that disk.
-   - Without a disk, the app still works, but all data (including the
-     seeded demo users) is wiped on every redeploy — acceptable for a quick
-     demo, not for anything you want to persist.
-   - If your grading environment doesn't support persistent disks at all,
-     an alternative is swapping SQLite for Render's managed PostgreSQL —
-     that would require changing `database.cpp`'s SQL dialect (mainly
-     `AUTOINCREMENT` → `SERIAL`/`IDENTITY` and the `datetime('now')` calls)
-     and linking `libpq` instead of `libsqlite3` in `CMakeLists.txt`.
-6. Deploy. Render will build the Docker image (this takes a few minutes the
-   first time since it compiles Crow + the app from source).
-7. **View logs:** Render dashboard → your service → **Logs** tab (live
-   tail of stdout/stderr, including the "listening on 0.0.0.0:PORT" line).
-8. **Test the deployed API:**
-   ```bash
-   curl https://YOUR-RENDER-SERVICE.onrender.com/api/health
-   ```
-9. Update `frontend/js/api.js` with this same URL (Section 6) and push.
+   | `ALLOWED_ORIGINS` | `https://sahukumarsonu.github.io` |
+   | `PASSWORD_PEPPER` | `dev-only-pepper-change-me` (⚠️ set your own for real use) |
+   | `BANK_DB_PATH` | `./bank.db` (⚠️ set to `/data/bank.db` + add a Render Disk for persistence — see below) |
+3. **Persistent storage:** Render's filesystem resets on every deploy.
+   Add a Disk mounted at `/data`, and set `BANK_DB_PATH=/data/bank.db`, or
+   all data (including demo users) is wiped on every redeploy.
+4. Free-tier note: the service spins down after ~15 min idle, and the
+   first request after that can take up to a minute. Hit `/api/health`
+   before a demo to warm it up.
+5. Verify: `https://internet-banking-ek6f.onrender.com/api/health` should
+   return `{"status":"ok","service":"internet-banking-system"}`.
 
 ---
 
-## 9. Final Checklist — verify the site works from another device
+## API Reference
 
-- [ ] `GET https://YOUR-RENDER-SERVICE.onrender.com/api/health` returns `{"status":"ok",...}`
-- [ ] `frontend/js/api.js` has `API_BASE_URL` set to that Render URL
-- [ ] GitHub Pages is enabled and serving `frontend/`
-- [ ] From a phone or a different network, open the GitHub Pages URL
-- [ ] Register a new account → land back on login with a success toast
-- [ ] Log in → dashboard shows ₹0.00 balance and your generated account number
-- [ ] Deposit money → balance and recent transactions update
-- [ ] Withdraw more than your balance → see a friendly "insufficient balance" error, no crash
-- [ ] Open a second account (or use a seeded demo account) and transfer money between the two → both balances update correctly
-- [ ] Transaction history page: search, filter by type, filter by date, and paginate all work
-- [ ] Log out, then try visiting `dashboard.html` directly → redirected to login
-- [ ] Admin login (`admin.html`) with `admin@ibs.com` → dashboard shows customer/account/transaction totals
-- [ ] Deactivate a customer from the admin panel → that customer can no longer log in
+Base path `/api`. Authenticated routes need `Authorization: Bearer <token>`.
 
----
-
-## 10. Testing Notes
-
-Manually verified request/response scenarios (see Section 4 for curl
-examples) that map to the required test cases:
-
-- Successful registration / duplicate registration (`409 Conflict`)
-- Successful login / invalid password (`401`) / too many attempts (`429`)
-- Successful deposit / successful withdrawal
-- Withdrawal with insufficient balance (`400`, balance unchanged — the
-  `WHERE balance_paise >= ?` guard prevents the row from updating at all)
-- Successful transfer / transfer to a non-existent account (`400`) /
-  transfer to your own account (`400`)
-- Accessing another user's transaction by ID (`404` — ownership is checked
-  via `account_id`, not trusted from the client)
-- Transaction history pagination and filters
-- Non-admin hitting an `/admin/*` route (`403`)
-- Invalid input (bad email format, weak password, non-numeric amount, etc.)
-- A deliberately failed multi-statement write inside a transfer is rolled
-  back atomically (verified by forcing a constraint violation mid-transfer
-  in development and confirming both balances stayed unchanged)
+| Method | Endpoint | Auth | Notes |
+|---|---|---|---|
+| POST | `/auth/register` | — | Simple request (no preflight) |
+| POST | `/auth/login` | — | Simple request (no preflight) |
+| POST | `/auth/logout` | Bearer | |
+| GET  | `/auth/me` | Bearer | |
+| GET  | `/account` | Bearer | |
+| GET  | `/account/balance` | Bearer | |
+| GET  | `/profile` | Bearer | |
+| PUT  | `/profile` | Bearer | |
+| PUT  | `/profile/password` | Bearer | |
+| POST | `/transactions/deposit` | Bearer | Not auto-retried client-side |
+| POST | `/transactions/withdraw` | Bearer | Not auto-retried client-side |
+| POST | `/transactions/transfer` | Bearer | Not auto-retried client-side, atomic server-side |
+| GET  | `/transactions` | Bearer | `type, from, to, page, pageSize` query params |
+| GET  | `/transactions/{id}` | Bearer | |
+| POST | `/admin/login` | — | Simple request (no preflight) |
+| GET  | `/admin/dashboard` | Bearer (admin) | |
+| GET  | `/admin/customers` | Bearer (admin) | `search` query param |
+| GET  | `/admin/transactions` | Bearer (admin) | `limit` query param |
+| PUT  | `/admin/customers/{id}/status` | Bearer (admin) | |
+| GET  | `/health` | — | |
+| OPTIONS | `/<anything under /api/>` | — | CORS preflight catch-all |
 
 ---
 
-## 11. Future Improvements
+## Security notes
 
-- Move from SQLite to PostgreSQL for true concurrent-write scalability
-- Add refresh tokens / shorter-lived access tokens instead of one long-lived
-  session token
-- Add email verification on registration
-- Add downloadable PDF/CSV statements
-- Add scheduled/recurring transfers
-- Add two-factor authentication for login
-- Replace PBKDF2 with Argon2id (see Security Notes) if a suitable
-  cross-platform build of libargon2 is available in your deployment target
+- Passwords: PBKDF2-HMAC-SHA256, 210,000 iterations, per-user random salt,
+  server-side pepper (via OpenSSL).
+- All SQL uses prepared statements.
+- Balances are recalculated and re-checked server-side on every write —
+  the frontend never sends or is trusted for a balance value. Withdrawals
+  and transfers are guarded by `WHERE balance_paise >= ?` so concurrent
+  requests can't overdraw.
+- Transfers run inside a single SQLite transaction (`BEGIN`/`COMMIT`) with
+  `ROLLBACK` on any failure — both balances move together or neither does.
+- Login attempts are rate-limited per email.
+- Sessions are random 256-bit server-side tokens with an expiry, not JWTs.
 
 ---
 
-## 12. Screenshots
+## Testing checklist
 
-_Add screenshots of the home page, dashboard, transfer form, transaction
-history, and admin panel here once you've run the app locally or deployed
-it — e.g. `![Dashboard](docs/screenshots/dashboard.png)`._
+- [ ] `GET /api/health` → `{"status":"ok",...}`
+- [ ] Register a new account (fresh, unused email) → redirected to login
+- [ ] Log in → dashboard loads balance + account number
+- [ ] Deposit → balance and recent transactions update
+- [ ] Withdraw more than balance → clean "insufficient balance" error
+- [ ] Transfer between two accounts → both balances update correctly
+- [ ] Transaction history search/filter/pagination all work
+- [ ] Log out → visiting `dashboard.html` directly redirects to login
+- [ ] Admin login (`admin.html`) → dashboard shows totals
+- [ ] Deactivating a customer prevents their login
+
+## Future improvements
+
+- Move from SQLite to PostgreSQL for concurrent-write scalability
+- Server-side idempotency keys for deposit/withdraw/transfer, so the
+  client-side retry restriction described above could be safely lifted
+- Refresh tokens instead of one long-lived session token
+- Email verification, downloadable statements, 2FA

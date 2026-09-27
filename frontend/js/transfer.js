@@ -1,8 +1,15 @@
 /**
  * transfer.js — deposit, withdrawal, and money-transfer forms (transfer.html).
+ *
+ * IMPORTANT: deposit/withdraw/transfer intentionally do NOT use automatic
+ * retry (unlike most other calls in this app). If a network failure
+ * happens, the request may have already succeeded on the server even
+ * though the browser never saw the response — silently retrying a money
+ * transaction could double it. Instead, on a network failure here we tell
+ * the user to check their transaction history before submitting again.
  */
 
-let pendingAction = null; // { type: 'deposit'|'withdraw'|'transfer', payload }
+let pendingAction = null; // set to a function while the confirm modal is open
 
 function initTransferPage() {
   if (!requireCustomerAuth()) return;
@@ -20,7 +27,8 @@ function initTransferPage() {
 
 async function loadBalanceHeader() {
   try {
-    const account = await Api.get("/api/account");
+    // Safe to auto-retry: this is a read-only GET, never a money movement.
+    const account = await Api.getWithRetry("/api/account");
     document.getElementById("current-balance").textContent = formatCurrency(account.balance);
     const accEl = document.getElementById("current-account-number");
     if (accEl) accEl.textContent = account.accountNumber;
@@ -49,6 +57,23 @@ async function onModalConfirm() {
   }
 }
 
+/**
+ * Shows a network-failure message that's careful not to encourage blindly
+ * resubmitting a money-moving request — the action may have already gone
+ * through even though this browser never got the confirmation.
+ */
+function showMoneyOperationError(err) {
+  if (err.isNetworkFailure) {
+    showToast(
+      "Connection interrupted — this action may or may not have gone through. " +
+      "Please check your transaction history and current balance before trying again.",
+      "error"
+    );
+  } else {
+    showToast(err.message, "error");
+  }
+}
+
 function onDepositSubmit(e) {
   e.preventDefault();
   const amountInput = document.getElementById("deposit-amount");
@@ -68,12 +93,13 @@ function onDepositSubmit(e) {
       const btn = document.getElementById("deposit-submit");
       btn.disabled = true;
       try {
+        // Deliberately Api.post (no retry) — see the note at the top of this file.
         const res = await Api.post("/api/transactions/deposit", { amount, description });
         showToast("Deposit successful. New balance: " + formatCurrency(res.newBalance), "success");
         document.getElementById("deposit-form").reset();
         loadBalanceHeader();
       } catch (err) {
-        showToast(err.message, "error");
+        showMoneyOperationError(err);
       } finally {
         btn.disabled = false;
       }
@@ -104,7 +130,7 @@ function onWithdrawSubmit(e) {
         document.getElementById("withdraw-form").reset();
         loadBalanceHeader();
       } catch (err) {
-        showToast(err.message, "error");
+        showMoneyOperationError(err);
       } finally {
         btn.disabled = false;
       }
@@ -150,7 +176,7 @@ function onTransferSubmit(e) {
         document.getElementById("transfer-form").reset();
         loadBalanceHeader();
       } catch (err) {
-        showToast(err.message, "error");
+        showMoneyOperationError(err);
       } finally {
         btn.disabled = false;
       }

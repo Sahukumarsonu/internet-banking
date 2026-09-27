@@ -46,7 +46,7 @@ function initLoginPage() {
     submitBtn.innerHTML = '<span class="spinner"></span> Logging in...';
 
     try {
-      const data = await Api.post("/api/auth/login", { email, password }, { auth: false, skipPreflight: true });
+      const data = await Api.postWithRetry("/api/auth/login", { email, password }, { auth: false, skipPreflight: true });
       Api.setSession(data.token, data.user);
       window.location.href = "dashboard.html";
     } catch (err) {
@@ -98,10 +98,21 @@ function initRegisterPage() {
     submitBtn.innerHTML = '<span class="spinner"></span> Creating account...';
 
     try {
-      await Api.post("/api/auth/register", values, { auth: false, skipPreflight: true });
+      await Api.postWithRetry("/api/auth/register", values, { auth: false, skipPreflight: true });
       window.location.href = "login.html?registered=1";
     } catch (err) {
-      alertBox.textContent = err.message;
+      if (err.afterNetworkFailureRetry && /already exists/i.test(err.message)) {
+        // The connection dropped on the first attempt, but the retry shows
+        // this email is now registered — almost certainly from that same
+        // first attempt actually succeeding server-side. Point them to
+        // login instead of making them think registration failed outright.
+        alertBox.textContent =
+          "Your connection dropped briefly, but it looks like this account may have already " +
+          "been created a moment ago. Try logging in with the email and password you just used — " +
+          "if that doesn't work, use a different email to register fresh.";
+      } else {
+        alertBox.textContent = err.message;
+      }
       alertBox.style.display = "block";
     } finally {
       submitBtn.disabled = false;

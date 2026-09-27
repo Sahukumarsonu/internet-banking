@@ -18,22 +18,23 @@ async function initDashboardPage() {
   if (nameEl && user) nameEl.textContent = user.fullName.split(" ")[0];
 
   try {
-    const [account, txData] = await Promise.all([
-      Api.getWithRetry("/api/account"),
-      Api.getWithRetry("/api/transactions", { query: { page: 1, pageSize: 5 } }),
-    ]);
-
+    // Fired sequentially, not via Promise.all — Render's free-tier edge has
+    // shown a pattern of failing specifically when multiple authenticated
+    // requests (each needing its own CORS preflight) hit it at the same
+    // instant. One request at a time is slightly slower but noticeably
+    // more reliable on that hosting tier.
+    const account = await Api.getWithRetry("/api/account");
     balanceEl.textContent = formatCurrency(account.balance);
     accountEl.textContent = account.accountNumber;
 
-    const [deposits, withdrawals] = await Promise.all([
-      Api.getWithRetry("/api/transactions", { query: { type: "deposit", pageSize: 1 } }),
-      Api.getWithRetry("/api/transactions", { query: { type: "withdrawal", pageSize: 1 } }),
-    ]);
-    depositsEl.textContent = deposits.total;
-    withdrawalsEl.textContent = withdrawals.total;
-
+    const txData = await Api.getWithRetry("/api/transactions", { query: { page: 1, pageSize: 5 } });
     renderRecentTransactions(txData.items, txBody, emptyState);
+
+    const deposits = await Api.getWithRetry("/api/transactions", { query: { type: "deposit", pageSize: 1 } });
+    depositsEl.textContent = deposits.total;
+
+    const withdrawals = await Api.getWithRetry("/api/transactions", { query: { type: "withdrawal", pageSize: 1 } });
+    withdrawalsEl.textContent = withdrawals.total;
   } catch (err) {
     showToast(err.message, "error");
   }

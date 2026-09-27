@@ -3,7 +3,6 @@
 // to any real bank or payment network.
 
 #include "crow.h"
-#include "crow/middlewares/cors.h"
 #include "config.h"
 #include "database.h"
 #include "auth.h"
@@ -15,6 +14,33 @@
 #include <vector>
 #include <mutex>
 #include <string>
+
+// Hand-written CORS middleware. Crow's built-in crow::CORSHandler was tried
+// first but in practice preflight (OPTIONS) requests never received the
+// Access-Control-Allow-Origin header — something upstream of our route
+// handlers (either the router or the built-in middleware itself) was
+// swallowing them. Rather than debug a black box, this middleware is fully
+// self-contained: it unconditionally stamps every single outgoing response
+// (success, error, and the explicit OPTIONS route below) with the right
+// headers in one place, via Crow's standard after_handle hook.
+struct SimpleCors {
+    struct context {};
+
+    void before_handle(crow::request&, crow::response&, context&) {
+        // No-op: CORS headers are applied uniformly in after_handle below,
+        // for both real responses and the explicit OPTIONS route's reply.
+    }
+
+    void after_handle(crow::request&, crow::response& res, context&) {
+        std::string origin = config::allowedOrigins();
+        res.set_header("Access-Control-Allow-Origin", origin);
+        res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+        res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+        if (origin != "*") {
+            res.set_header("Vary", "Origin");
+        }
+    }
+};
 
 namespace {
 
@@ -85,36 +111,18 @@ int main() {
                      "Make sure the schema has been applied to the database." << std::endl;
     }
 
-    crow::App<crow::CORSHandler> app;
+    crow::App<SimpleCors> app;
 
-    // --- CORS ------------------------------------------------------------
-    std::string allowedOrigin = config::allowedOrigins();
-    auto& cors = app.get_middleware<crow::CORSHandler>();
-    cors.global()
-        .headers("Content-Type", "Authorization")
-        .methods("GET"_method, "POST"_method, "PUT"_method, "DELETE"_method, "OPTIONS"_method)
-        .origin(allowedOrigin);
-
-    // Belt-and-suspenders preflight handling. Every route below is
-    // registered for a specific method (POST, GET, ...) only, so a browser's
-    // OPTIONS preflight request has no matching route and can be rejected by
-    // Crow's router before the CORS middleware ever runs — the browser then
-    // sees a response with no Access-Control-Allow-Origin header at all and
-    // blocks the real request, even though the middleware above is
-    // configured correctly. This catch-all guarantees every OPTIONS request
-    // under /api/ gets a real, matched route that always answers with the
-    // right CORS headers, regardless of middleware/router ordering.
+    // Explicit preflight route. Every route below is registered for one
+    // specific method (POST, GET, ...) only, and a browser's CORS preflight
+    // uses OPTIONS — so without this, an OPTIONS request has no matching
+    // route at all. This guarantees every path under /api/ has a real,
+    // matched OPTIONS route; SimpleCors::after_handle (above) then stamps
+    // the actual CORS headers onto this response just like any other.
     CROW_ROUTE(app, "/api/<path>").methods("OPTIONS"_method)
-    ([allowedOrigin](const crow::request&, std::string) {
+    ([](const crow::request&, std::string) {
         crow::response res;
         res.code = 204;
-        res.set_header("Access-Control-Allow-Origin", allowedOrigin);
-        res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-        res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization");
-        res.set_header("Access-Control-Max-Age", "86400");
-        if (allowedOrigin != "*") {
-            res.set_header("Vary", "Origin");
-        }
         return res;
     });
 

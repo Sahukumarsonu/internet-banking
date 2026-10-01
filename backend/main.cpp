@@ -51,6 +51,17 @@ std::string extractToken(const crow::request& req) {
     if (header.rfind(prefix, 0) == 0) {
         return header.substr(prefix.size());
     }
+    // Fallback: accept the token as a ?token= query parameter too. This
+    // exists specifically so GET requests can authenticate without an
+    // Authorization header — that header alone is what forces a browser's
+    // CORS preflight (OPTIONS) request, and Render's free-tier edge has
+    // shown intermittent failures answering those. A GET with no custom
+    // headers needs no preflight at all. Trade-off: a token in the URL can
+    // appear in server-side access logs, unlike a header. Only GET calls
+    // in this app use this path (see frontend/js/api.js); every
+    // state-changing write still requires the Authorization header.
+    const char* queryToken = req.url_params.get("token");
+    if (queryToken) return std::string(queryToken);
     return "";
 }
 

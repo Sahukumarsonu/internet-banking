@@ -59,18 +59,37 @@ const Api = {
    */
   async request(path, { method = "GET", body, auth = true, query, skipPreflight = false } = {}) {
     let url = this.baseUrl + path;
-    if (query) {
-      const qs = new URLSearchParams(
-        Object.entries(query).filter(([, v]) => v !== undefined && v !== null && v !== "")
-      ).toString();
-      if (qs) url += "?" + qs;
-    }
+    const queryParams = { ...(query || {}) };
 
-    const headers = { "Content-Type": skipPreflight ? "text/plain" : "application/json" };
+    // GET requests send no custom headers at all when possible — no
+    // Content-Type, and the auth token goes in the query string instead of
+    // an Authorization header. A GET with zero custom headers is a "simple"
+    // CORS request that skips preflight entirely. This matters because
+    // Render's free-tier edge has shown intermittent failures specifically
+    // answering preflight (OPTIONS) requests — avoiding the need for one on
+    // every authenticated read (dashboard, transactions, profile, admin
+    // lists) sidesteps that. Writes (POST/PUT) still use the Authorization
+    // header as normal; a preflight is unavoidable for those anyway since
+    // they also need a JSON Content-Type.
+    const headers = {};
+    if (method !== "GET") {
+      headers["Content-Type"] = skipPreflight ? "text/plain" : "application/json";
+    }
     if (auth) {
       const token = this.getToken();
-      if (token) headers["Authorization"] = "Bearer " + token;
+      if (token) {
+        if (method === "GET") {
+          queryParams.token = token;
+        } else {
+          headers["Authorization"] = "Bearer " + token;
+        }
+      }
     }
+
+    const qs = new URLSearchParams(
+      Object.entries(queryParams).filter(([, v]) => v !== undefined && v !== null && v !== "")
+    ).toString();
+    if (qs) url += "?" + qs;
 
     let response;
     try {
